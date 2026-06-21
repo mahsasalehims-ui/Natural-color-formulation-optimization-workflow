@@ -6,6 +6,12 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import io, datetime
 
+from docx import Document
+from docx.shared import Inches, Pt, RGBColor, Cm
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.oxml.ns import qn
+from docx.oxml import OxmlElement
+
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
@@ -509,4 +515,235 @@ story.append(Paragraph(
     "Confidential — internal use only", note_sty))
 
 doc.build(story)
-print(f"PDF saved → {OUT}")
+print(f"PDF saved -> {OUT}")
+
+# ══════════════════════════════════════════════════════════════════════════════
+# BUILD DOCX
+# ══════════════════════════════════════════════════════════════════════════════
+def _set_cell_bg(cell, hex_color: str) -> None:
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd  = OxmlElement("w:shd")
+    shd.set(qn("w:fill"), hex_color.lstrip("#"))
+    shd.set(qn("w:val"),  "clear")
+    tcPr.append(shd)
+
+def _rgb(hex_color: str) -> RGBColor:
+    h = hex_color.lstrip("#")
+    return RGBColor(int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16))
+
+def _hdr_row(tbl, headers: list, bg: str = "EEEDFE") -> None:
+    row = tbl.rows[0]
+    for j, txt in enumerate(headers):
+        c = row.cells[j]
+        c.text = txt
+        c.paragraphs[0].runs[0].bold = True
+        c.paragraphs[0].runs[0].font.color.rgb = _rgb("#534AB7")
+        _set_cell_bg(c, bg)
+
+def _caption(ddoc, text: str) -> None:
+    p = ddoc.add_paragraph(text)
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    if p.runs:
+        p.runs[0].italic = True
+        p.runs[0].font.size = Pt(8)
+
+def _section_heading(ddoc, text: str, level: int = 1):
+    h = ddoc.add_heading(text, level=level)
+    if h.runs:
+        h.runs[0].font.color.rgb = _rgb("#534AB7")
+    return h
+
+OUT_DOCX = "docs/QC_Report_June2024.docx"
+ddoc = Document()
+
+for sec in ddoc.sections:
+    sec.left_margin   = Cm(2)
+    sec.right_margin  = Cm(2)
+    sec.top_margin    = Cm(2)
+    sec.bottom_margin = Cm(2)
+
+# ── cover ─────────────────────────────────────────────────────────────────────
+p = ddoc.add_paragraph()
+p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+run = p.add_run("Natural Color QC Report")
+run.bold = True
+run.font.size = Pt(22)
+run.font.color.rgb = _rgb("#534AB7")
+
+p2 = ddoc.add_paragraph()
+p2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+r2 = p2.add_run("Intake spectrophotometer batch — June 2024")
+r2.font.size = Pt(11)
+
+ddoc.add_paragraph()
+
+meta_data = [
+    ("Report date",     datetime.date.today().strftime("%d %B %Y")),
+    ("Lots measured",   "8"),
+    ("Ingredients",     "Grape Skin Anthocyanin · Beta-Carotene · Spirulina Phycocyanin"),
+    ("Instrument",      "Spectrophotometer  |  D65  |  CIE 1931 2°"),
+    ("Colour standard", "CIEDE2000 (ΔE₀₀)  |  Spectral RMSD"),
+    ("Workflow",        "color_workflow.py  v1.0"),
+]
+meta_tbl = ddoc.add_table(rows=len(meta_data), cols=2)
+meta_tbl.style = "Table Grid"
+for i, (k, v) in enumerate(meta_data):
+    c0 = meta_tbl.rows[i].cells[0]
+    c1 = meta_tbl.rows[i].cells[1]
+    c0.text = k
+    c0.paragraphs[0].runs[0].bold = True
+    c1.text = v
+    _set_cell_bg(c0, "EEEDFE")
+
+ddoc.add_paragraph()
+sp = ddoc.add_paragraph()
+sr = sp.add_run(f"Summary:   PASS: {pass_n}   |   MARGINAL: {marg_n}   |   FAIL: {fail_n}")
+sr.bold = True
+sr.font.size = Pt(12)
+sr.font.color.rgb = _rgb("#2C2C2A")
+
+# ── §1 QC table ───────────────────────────────────────────────────────────────
+_section_heading(ddoc, "1  QC Certificate — All Lots")
+
+qc_cols = ["Lot ID","Ingredient","Supplier","L*","a*","b*","K/S","ΔE₀₀","RMSD","Decision"]
+qc_tbl  = ddoc.add_table(rows=1+len(feat), cols=len(qc_cols))
+qc_tbl.style = "Table Grid"
+_hdr_row(qc_tbl, qc_cols)
+for i, (_, r) in enumerate(feat.iterrows(), 1):
+    vals = [r["lot_id"], r["ingredient"][:22], r["supplier"],
+            str(r["L"]), str(r["a"]), str(r["b"]),
+            str(r["ks"]), str(r["dE"]), str(r["rmsd"]), r["decision"]]
+    dec_bg = {"PASS":"EAF3DE","MARGINAL":"FAEEDA","FAIL":"FCEBEB"}.get(r["decision"],"F1EFE8")
+    for j, val in enumerate(vals):
+        cell = qc_tbl.rows[i].cells[j]
+        cell.text = val
+        if j == len(vals) - 1:
+            _set_cell_bg(cell, dec_bg)
+            if cell.paragraphs[0].runs:
+                cell.paragraphs[0].runs[0].bold = True
+
+p_note = ddoc.add_paragraph(
+    "Tolerance gates: ΔE₀₀ ≤ 2.0 (CIEDE2000)  |  "
+    "Spectral RMSD: ANT ≤ 0.025, BCR ≤ 0.020, SPR ≤ 0.030.  "
+    "MARGINAL = within 130% of tolerance."
+)
+if p_note.runs:
+    p_note.runs[0].font.size = Pt(8)
+
+# ── §2 reflectance curves ─────────────────────────────────────────────────────
+_section_heading(ddoc, "2  Reflectance Spectra R(λ)")
+ddoc.add_paragraph(
+    "Each panel compares all intake lots for one ingredient against the approved "
+    "reference spectrum (dashed). Deviation in curve shape — not just offset — "
+    "indicates degradation or supplier-grade substitution."
+)
+buf1.seek(0)
+ddoc.add_picture(buf1, width=Inches(6.3))
+_caption(ddoc, "Figure 1 — R(λ) 400–700 nm, D65/2°.  Dashed = reference.")
+
+# ── §3 dE bar ─────────────────────────────────────────────────────────────────
+_section_heading(ddoc, "3  Colour Deviation ΔE₀₀ per Lot")
+ddoc.add_paragraph(
+    "CIEDE2000 colour difference vs. the approved reference. "
+    "The dashed vertical line marks the 2.0-unit tolerance — the boundary "
+    "of perceptible difference for a trained observer under D65."
+)
+buf2.seek(0)
+ddoc.add_picture(buf2, width=Inches(6.3))
+_caption(ddoc, "Figure 2 — CIEDE2000 ΔE₀₀.  Green=PASS, amber=MARGINAL, red=FAIL.")
+
+# ── §4 spectral overlays ──────────────────────────────────────────────────────
+_section_heading(ddoc, "4  Spectral Overlay — Measured vs. K-M Correction Prediction")
+ddoc.add_paragraph(
+    "For each non-passing lot, the Kubelka-Munk mixing model predicts the "
+    "post-correction reflectance curve (green dotted). "
+    "The shaded region shows the current spectral gap vs. reference."
+)
+buf3.seek(0)
+ddoc.add_picture(buf3, width=Inches(6.3))
+_caption(ddoc, (
+    "Figure 3 — Per-lot R(λ) overlay.  Dashed purple=reference.  "
+    "Red solid=measured.  Green dotted=K-M predicted post-correction."
+))
+
+# ── §5 lot actions ────────────────────────────────────────────────────────────
+_section_heading(ddoc, "5  Lot-Level Action Summary")
+act_tbl = ddoc.add_table(rows=1+len(actions), cols=3)
+act_tbl.style = "Table Grid"
+_hdr_row(act_tbl, ["Lot ID", "Decision", "Action"])
+for i, (lot_id, (dec, txt)) in enumerate(actions.items(), 1):
+    act_tbl.rows[i].cells[0].text = lot_id
+    act_tbl.rows[i].cells[1].text = dec
+    act_tbl.rows[i].cells[2].text = txt
+    dec_bg = {"PASS":"EAF3DE","MARGINAL":"FAEEDA","FAIL":"FCEBEB"}.get(dec,"F1EFE8")
+    _set_cell_bg(act_tbl.rows[i].cells[1], dec_bg)
+    if act_tbl.rows[i].cells[1].paragraphs[0].runs:
+        act_tbl.rows[i].cells[1].paragraphs[0].runs[0].bold = True
+
+# ── §6 stability ──────────────────────────────────────────────────────────────
+_section_heading(ddoc, "6  Stability Model — Shelf-Life Predictions")
+ddoc.add_paragraph(
+    "Gradient-boosted regression trained on 5 lots with confirmed shelf-life data. "
+    "CV RMSE: 127 days. Water activity and processing temperature account for "
+    "80% of predictive importance."
+)
+stab_rows = [
+    ("ANT-2024-003","Grape Skin Anthocyanin","384 days","320 days","Above spec"),
+    ("BCR-2024-003","Beta-Carotene",         "454 days","500 days","BELOW SPEC"),
+    ("SPR-2024-002","Spirulina Phycocyanin",  "295 days","270 days","Above spec"),
+]
+stab_tbl = ddoc.add_table(rows=1+len(stab_rows), cols=5)
+stab_tbl.style = "Table Grid"
+_hdr_row(stab_tbl, ["Lot ID","Ingredient","Predicted","Min Spec","Status"])
+for i, (lid, ing, pred, spec, status) in enumerate(stab_rows, 1):
+    stab_tbl.rows[i].cells[0].text = lid
+    stab_tbl.rows[i].cells[1].text = ing
+    stab_tbl.rows[i].cells[2].text = pred
+    stab_tbl.rows[i].cells[3].text = spec
+    stab_tbl.rows[i].cells[4].text = status
+    bg = "FCEBEB" if "BELOW" in status else "EAF3DE"
+    _set_cell_bg(stab_tbl.rows[i].cells[4], bg)
+    if stab_tbl.rows[i].cells[4].paragraphs[0].runs:
+        stab_tbl.rows[i].cells[4].paragraphs[0].runs[0].bold = ("BELOW" in status)
+
+p_stab = ddoc.add_paragraph(
+    "BCR-2024-003 predicted at 454 d — 46 d below minimum. "
+    "Send for accelerated shelf-life testing (40°C/75% RH) before any use. "
+    "Feed confirmed results back to retrain the model."
+)
+if p_stab.runs:
+    p_stab.runs[0].font.size = Pt(8)
+
+# ── §7 next steps ─────────────────────────────────────────────────────────────
+_section_heading(ddoc, "7  Recommended Next Steps")
+for ns_title, ns_body in [
+    ("ANT-2024-002 (MARGINAL)",
+     "Apply correction recipe (4.35 g/kg). Re-measure and resubmit through Steps 3–5 before release."),
+    ("ANT-2024-003 (FAIL — over-conc.)",
+     "Dilute 20% with approved carrier or reject. Verify Supplier B grade spec."),
+    ("BCR-2024-002 (FAIL — under-conc.)",
+     "Apply correction recipe (2.03 g/kg). Re-measure before release."),
+    ("BCR-2024-003 (FAIL — shift + stability)",
+     "Quarantine. Raise supplier issue with Supplier C. Do not use in shelf-life-critical formulations."),
+    ("SPR-2024-002 (FAIL — degraded)",
+     "Investigate cold-chain compliance. Request CoA from Supplier C. If breach confirmed, reject and re-order."),
+    ("Model improvement",
+     "Send ANT-003, BCR-003, SPR-002 for ASLT (40°C/75% RH). Feed confirmed shelf-life back to stability model to reduce CV RMSE."),
+]:
+    p_ns = ddoc.add_paragraph(style="List Bullet")
+    r_bold = p_ns.add_run(ns_title + ": ")
+    r_bold.bold = True
+    p_ns.add_run(ns_body)
+
+ddoc.add_paragraph()
+p_ft = ddoc.add_paragraph(
+    f"Generated by color_workflow.py  |  "
+    f"{datetime.datetime.now().strftime('%Y-%m-%d %H:%M')}  |  "
+    "Confidential — internal use only"
+)
+if p_ft.runs:
+    p_ft.runs[0].font.size = Pt(8)
+    p_ft.runs[0].font.color.rgb = _rgb("#5F5E5A")
+
+ddoc.save(OUT_DOCX)
+print(f"DOCX saved -> {OUT_DOCX}")
