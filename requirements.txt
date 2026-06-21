@@ -1,0 +1,7 @@
+numpy
+pandas
+scikit-learn
+reportlab
+matplotlib
+anthropic
+python-dotenv
