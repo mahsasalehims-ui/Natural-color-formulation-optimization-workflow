@@ -36,10 +36,11 @@ data in (spectrophotometer CSV) → 6-step pipeline → ranked candidates + PDF 
 git clone https://github.com/mahsasalehims-ui/Natural-color-formulation-optimization-workflow.git
 cd Natural-color-formulation-optimization-workflow
 pip install -r requirements.txt
-python3 color_workflow.py
+cp .env.example .env          # then add your ANTHROPIC_API_KEY to .env
+python color_workflow.py      # base pipeline (console output)
+python workflows/research_workflow.py          # AI research workflow
+python workflows/color_formulation_workflow.py # AI formulation narrative
 ```
-
-This runs the full 6-step pipeline against the sample data in `data/` and auto-generates `docs/QC_Report_June2024.pdf` — a complete QC certificate with reflectance overlays, ΔE bar charts, and per-lot correction recipes.
 
 ## Repository structure
 
@@ -48,9 +49,13 @@ This runs the full 6-step pipeline against the sample data in `data/` and auto-g
 ├── color_workflow.py        # Main 6-step pipeline (load → normalise → features → correct → QC → stability)
 ├── generate_report.py       # PDF report generator (auto-called at end of color_workflow.py)
 ├── requirements.txt
+├── .env.example             # API key template — copy to .env and fill in
 ├── data/
 │   ├── ingredient_lots.csv      # 8 sample intake lots — 31-point reflectance spectrum + CIELAB + matrix params
 │   └── reference_targets.csv    # Approved target spectra & tolerance gates per ingredient SKU
+├── workflows/
+│   ├── research_workflow.py          # General-purpose AI research → MD + PDF report
+│   └── color_formulation_workflow.py # AI formulation narrative over QC pipeline → MD + PDF
 └── docs/
     ├── NaturalColor_Agent_Showcase.pdf   # Full architecture & results writeup
     └── QC_Report_June2024.pdf            # Sample generated QC report
