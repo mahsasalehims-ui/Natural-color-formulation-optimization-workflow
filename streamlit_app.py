@@ -74,31 +74,21 @@ st.set_page_config(
 )
 
 
-# ── API key resolution ─────────────────────────────────────────────────────────
-def _get_stored_key() -> str:
-    """Read key from Streamlit secrets → env var (in that priority order)."""
+# ── API key resolution (server-side only — never sent to browser) ──────────────
+def _get_api_key() -> str:
     try:
         return st.secrets["GOOGLE_API_KEY"]
     except Exception:
         pass
     return os.environ.get("GOOGLE_API_KEY", "")
 
+api_key = _get_api_key()   # resolved once, stays on the server
+
 
 # ── sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown("## 🌿 Natural Color AI")
     st.divider()
-
-    stored = _get_stored_key()
-    api_key = st.text_input(
-        "Google Gemini API Key",
-        value=stored,
-        type="password",
-        placeholder="AIza...",
-        help="Free key from [aistudio.google.com](https://aistudio.google.com/)",
-    )
-    if not stored:
-        st.caption("[Get a free Gemini key →](https://aistudio.google.com/)")
 
     st.divider()
     st.markdown("**Analysis Brief**")
@@ -136,10 +126,7 @@ st.caption(
 )
 
 if not run_btn:
-    st.info(
-        "Set your Gemini API key in the sidebar, choose your analysis brief, "
-        "then click **Run Analysis**."
-    )
+    st.info("Choose your analysis brief in the sidebar, then click **Run Analysis**.")
     with st.expander("About this dashboard"):
         st.markdown("""
 **Pipeline stages**
@@ -158,8 +145,8 @@ if not run_btn:
 # ── validate key ──────────────────────────────────────────────────────────────
 if not api_key:
     st.error(
-        "No Google API key found.  \n"
-        "Enter it in the sidebar or add `GOOGLE_API_KEY` to your Streamlit secrets."
+        "API key not configured. "
+        "Admin: add `GOOGLE_API_KEY` to Streamlit Cloud → Settings → Secrets."
     )
     st.stop()
 
