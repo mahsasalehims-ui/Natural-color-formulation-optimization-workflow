@@ -390,7 +390,7 @@ display = feat_df[[
     "decision": "Decision",
 })
 st.dataframe(
-    display.style.applymap(_color_decision, subset=["Decision"]),
+    display.style.map(_color_decision, subset=["Decision"]),
     use_container_width=True,
     hide_index=True,
 )
