@@ -16,6 +16,26 @@ from sklearn.model_selection import cross_val_score
 
 warnings.filterwarnings("ignore")
 
+# ── password gate ─────────────────────────────────────────────────────────────
+def _check_password() -> bool:
+    correct = st.secrets.get("APP_PASSWORD", "")
+    if not correct:
+        return True  # no password configured → open access
+    if st.session_state.get("authenticated"):
+        return True
+    st.title("🌿 Natural Color Formulation AI")
+    pwd = st.text_input("Enter access password", type="password")
+    if st.button("Enter"):
+        if pwd == correct:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        else:
+            st.error("Incorrect password.")
+    st.stop()
+
+_check_password()
+
+
 # ── pipeline math helpers ──────────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from color_workflow import (
