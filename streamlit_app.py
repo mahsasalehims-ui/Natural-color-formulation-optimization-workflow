@@ -24,7 +24,7 @@ from color_workflow import (
 )
 
 # ── constants ──────────────────────────────────────────────────────────────────
-MODEL      = "gemini-1.5-flash"
+MODEL      = "gemini-2.5-flash"
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{MODEL}:generateContent"

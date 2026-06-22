@@ -43,7 +43,7 @@ from color_workflow import (
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
-MODEL  = "gemini-1.5-flash"
+MODEL  = "gemini-2.5-flash"
 GEMINI_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models/"
     f"{MODEL}:generateContent"
@@ -354,6 +354,7 @@ def build_prompt_block(brief: dict, results: dict) -> str:
 # Phase 3 — Claude API call
 # ─────────────────────────────────────────────────────────────────────────────
 def generate_narrative(prompt_block: str) -> str:
+    import time
     load_dotenv()
     api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
@@ -368,13 +369,24 @@ def generate_narrative(prompt_block: str) -> str:
         "generationConfig": {"maxOutputTokens": 8192},
     }
     print("\n  Generating expert narrative", end="", flush=True)
-    resp = requests.post(
-        GEMINI_URL, params={"key": api_key}, json=payload, timeout=120
+    for attempt in range(4):
+        resp = requests.post(
+            GEMINI_URL, params={"key": api_key}, json=payload, timeout=120
+        )
+        if resp.status_code == 429:
+            wait = 15 * (attempt + 1)
+            print(f"\n  Rate limit hit — waiting {wait}s (attempt {attempt+1}/4)...",
+                  end="", flush=True)
+            time.sleep(wait)
+            continue
+        resp.raise_for_status()
+        data = resp.json()
+        print(" done.")
+        return data["candidates"][0]["content"]["parts"][0]["text"]
+    sys.exit(
+        "\nERROR: Gemini API rate limit persists after 4 attempts.\n"
+        "  Free tier allows 15 requests/minute. Wait 1 minute and retry.\n"
     )
-    resp.raise_for_status()
-    data = resp.json()
-    print(" done.")
-    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────
