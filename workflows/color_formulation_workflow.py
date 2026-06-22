@@ -24,7 +24,7 @@ from sklearn.model_selection import cross_val_score
 import warnings
 warnings.filterwarnings("ignore")
 
-import anthropic
+import requests
 from dotenv import load_dotenv
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
@@ -43,7 +43,11 @@ from color_workflow import (
 )
 
 # ── constants ─────────────────────────────────────────────────────────────────
-MODEL  = "claude-sonnet-4-6"
+MODEL  = "gemini-1.5-flash"
+GEMINI_URL = (
+    "https://generativelanguage.googleapis.com/v1beta/models/"
+    f"{MODEL}:generateContent"
+)
 W, H   = A4
 MARGIN = 18 * mm
 
@@ -351,23 +355,26 @@ def build_prompt_block(brief: dict, results: dict) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 def generate_narrative(prompt_block: str) -> str:
     load_dotenv()
-    api_key = os.environ.get("ANTHROPIC_API_KEY")
+    api_key = os.environ.get("GOOGLE_API_KEY")
     if not api_key:
         sys.exit(
-            "\nERROR: ANTHROPIC_API_KEY is not set.\n"
-            "  Windows:  set ANTHROPIC_API_KEY=sk-ant-...\n"
-            "  Mac/Linux: export ANTHROPIC_API_KEY=sk-ant-...\n"
+            "\nERROR: GOOGLE_API_KEY is not set.\n"
+            "  Get a free key at https://aistudio.google.com/\n"
+            "  Then add  GOOGLE_API_KEY=your-key  to your .env file.\n"
         )
-    client = anthropic.Anthropic(api_key=api_key)
+    payload = {
+        "system_instruction": {"parts": [{"text": SYSTEM_PROMPT}]},
+        "contents": [{"parts": [{"text": prompt_block}]}],
+        "generationConfig": {"maxOutputTokens": 8192},
+    }
     print("\n  Generating expert narrative", end="", flush=True)
-    resp = client.messages.create(
-        model=MODEL,
-        max_tokens=8192,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt_block}],
+    resp = requests.post(
+        GEMINI_URL, params={"key": api_key}, json=payload, timeout=120
     )
+    resp.raise_for_status()
+    data = resp.json()
     print(" done.")
-    return resp.content[0].text
+    return data["candidates"][0]["content"]["parts"][0]["text"]
 
 
 # ─────────────────────────────────────────────────────────────────────────────

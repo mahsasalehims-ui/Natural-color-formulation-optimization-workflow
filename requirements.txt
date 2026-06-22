@@ -6,3 +6,5 @@ matplotlib
 anthropic
 python-dotenv
 python-docx
+streamlit
+requests
