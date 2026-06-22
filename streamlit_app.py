@@ -117,6 +117,14 @@ with st.sidebar:
         ["Lab team", "Management", "Supplier"],
     )
     st.divider()
+    st.markdown("**Data**")
+    uploaded_lots = st.file_uploader(
+        "Upload lots CSV (optional)",
+        type="csv",
+        help="Leave empty to use the built-in sample data. "
+             "File must have the same columns as `data/ingredient_lots.csv`.",
+    )
+    st.divider()
     run_btn = st.button("Run Analysis", type="primary", use_container_width=True)
 
 
@@ -158,9 +166,12 @@ if not api_key:
 
 # ── analysis ───────────────────────────────────────────────────────────────────
 @st.cache_data(show_spinner=False)
-def load_data():
+def load_data(uploaded_file=None):
     base = os.path.dirname(os.path.abspath(__file__))
-    lots = pd.read_csv(os.path.join(base, "data", "ingredient_lots.csv"))
+    if uploaded_file is not None:
+        lots = pd.read_csv(uploaded_file)
+    else:
+        lots = pd.read_csv(os.path.join(base, "data", "ingredient_lots.csv"))
     refs = pd.read_csv(os.path.join(base, "data", "reference_targets.csv"))
     return lots, refs
 
@@ -344,9 +355,12 @@ brief = {"ingredient": ingredient, "focus": focus, "audience": audience}
 
 with st.spinner("Loading CSV data..."):
     try:
-        lots, refs = load_data()
+        lots, refs = load_data(uploaded_lots)
     except FileNotFoundError as e:
         st.error(f"Data file not found: {e}")
+        st.stop()
+    except Exception as e:
+        st.error(f"Could not read CSV: {e}")
         st.stop()
 
 sku = SKU_MAP.get(ingredient)
@@ -354,7 +368,7 @@ if sku:
     lots = lots[lots["ingredient_sku"] == sku]
     if lots.empty:
         st.warning(f"No lots found for '{ingredient}'. Showing all lots.")
-        lots, refs = load_data()
+        lots, refs = load_data(None)
 
 with st.spinner("Running spectral analysis pipeline..."):
     results = run_analysis(lots, refs)
